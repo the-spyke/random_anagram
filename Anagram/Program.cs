@@ -13,6 +13,8 @@ namespace Anagram
 		{
 			var tests = new string[]
 			{
+				// Format is "<sentence> <word> <entry count (int)>"
+				// Entry count is used only for test result output, so may be 0.
 				/*00*/ "a abc 0",
 				/*01*/ "abc abc 1",
 				/*02*/ "abcabdcba abc 4",
@@ -41,7 +43,7 @@ namespace Anagram
 
 			for (int testIndex = 0; testIndex < tests.Length; testIndex++)
 			{
-				var source = tests[testIndex];
+				var source = tests[testIndex].ToLowerInvariant();
 
 				source = source.Replace("\r", string.Empty);
 				source = source.Replace("\t", string.Empty);
@@ -53,85 +55,76 @@ namespace Anagram
 				var word = parts[1];
 				var shouldBe = Convert.ToInt32(parts[2]);
 
+				// We're using only lowercase latin letters, the 'a' has code 97, so we can transform letters
+				// to the array's index.
 				const int firstCharOffset = 97;
 
 				var stopWatch = new Stopwatch();
 
 				stopWatch.Start();
 
-				var currentLetters = new int[26];
-				var removedLetters = new int[26];
+				// Arrays to count letters in the word.
+				var remainingLettersOriginal = new int[26];
 
 				foreach (var letter in word)
 				{
-					var i = letter - firstCharOffset;
+					var letterIndex = letter - firstCharOffset;
 
-					currentLetters[i] += 1;
+					remainingLettersOriginal[letterIndex] += 1;
 				}
 
-				var currentLettersCounter = word.Length;
-				var removedLettersCounter = 0;
+				var remainingLetters = new int[26];
+				var remainingLettersCount = word.Length;
+				var windowWidth = 0;
+
+				Buffer.BlockCopy(remainingLettersOriginal, 0, remainingLetters, 0, remainingLetters.Length);
 
 				var entries = new List<int>();
 
 				var position = 0;
-				var nextLetterIndex = -1;
+				var isSliding = false;
 
 				while (position < sentence.Length)
 				{
-					var letterIndex = sentence[position] - firstCharOffset;
+					var letterIndexCurrent = sentence[position] - firstCharOffset;
+					var windowPosition = position - windowWidth;
+					var letterIndexAtWindowPosition = sentence[windowPosition] - firstCharOffset;
 
-					if (currentLetters[letterIndex] > 0)
+					// If there're still remaining letters in anagram and current one is suitable.
+					if (remainingLetters[letterIndexCurrent] > 0)
 					{
-						currentLetters[letterIndex] -= 1;
-						removedLetters[letterIndex] += 1;
+						remainingLetters[letterIndexCurrent] -= 1;
 
-						currentLettersCounter -= 1;
-						removedLettersCounter += 1;
-
-						if (currentLettersCounter == 0)
+						// We've found an anagram. Try to slide a window.
+						if (remainingLettersCount == 1)
 						{
-							var entryPosition = position - word.Length + 1;
+							entries.Add(windowPosition);
 
-							entries.Add(entryPosition);
+							isSliding = true;
 
-							nextLetterIndex = sentence[entryPosition] - firstCharOffset;
-
-							currentLetters[nextLetterIndex] += 1;
-							removedLetters[nextLetterIndex] -= 1;
-
-							currentLettersCounter += 1;
-							removedLettersCounter -= 1;
-						}
-					}
-					else if (sentence[position - removedLettersCounter] - firstCharOffset != letterIndex)
-					{
-						if (nextLetterIndex >= 0)
-						{
-							currentLetters[nextLetterIndex] -= 1;
-							removedLetters[nextLetterIndex] += 1;
-
-							currentLettersCounter -= 1;
-							removedLettersCounter += 1;
-
-							nextLetterIndex = -1;
-
-							Swap(ref currentLetters, ref removedLetters);
-							Swap(ref currentLettersCounter, ref removedLettersCounter);
-
-							position -= 2;
+							remainingLetters[letterIndexAtWindowPosition] += 1;
 						}
 						else
 						{
-							for (int i = 0; i < currentLetters.Length; i++)
-							{
-								currentLetters[i] += removedLetters[i];
-								removedLetters[i] = 0;
-							}
-
-							currentLettersCounter = word.Length;
-							removedLettersCounter = 0;
+							remainingLettersCount -= 1;
+							windowWidth += 1;
 						}
+					}
+					// Current letter is missing in remaining letters and we can't slide the window further. So, we need to reset.
+					else if (letterIndexCurrent != letterIndexAtWindowPosition)
+					{
+						// Sliding by one letter was wrong. Reset and not forget to include that wrong letter in new window.
+						// position - 2 + 1 = position - 1. The new windows will start from that letter. 
+						if (isSliding)
+						{
+							isSliding = false;
+							position -= 2;
+						}
+
+						Buffer.BlockCopy(remainingLettersOriginal, 0, remainingLetters, 0, remainingLetters.Length);
+
+						remainingLettersCount = word.Length;
+						windowWidth = 0;
 					}
 
 					position += 1;
@@ -160,22 +153,6 @@ namespace Anagram
 			}
 
 			Console.ReadKey();
-		}
-
-		static void Swap(ref int left, ref int right)
-		{
-			var leftCopy = left;
-
-			left = right;
-			right = leftCopy;
-		}
-
-		static void Swap(ref int[] left, ref int[] right)
-		{
-			var leftCopy = left;
-
-			left = right;
-			right = leftCopy;
 		}
 	}
 }
